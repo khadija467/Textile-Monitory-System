@@ -1,0 +1,248 @@
+// Textile Factory Machine Monitoring & Management System
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  WORKER
+  TECHNICIAN
+}
+
+enum MachineStatus {
+  RUNNING
+  IDLE
+  FAULTY
+  MAINTENANCE
+  OFFLINE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+}
+
+enum MaintenanceStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ALERT
+  SUCCESS
+}
+
+enum InventoryCategory {
+  SPARE_PART
+  MOTOR
+  NEEDLE
+  OIL
+  CHEMICAL
+  YARN
+  FABRIC
+  OTHER
+}
+
+// ──────────────────────────────────────────────
+// MODELS
+// ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          Role      @default(WORKER)
+  department    String?
+  phone         String?
+  shiftStart    String?
+  shiftEnd      String?
+  avatarUrl     String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  operatedMachines   Machine[]        @relation("MachineOperator")
+  attendanceRecords  Attendance[]
+  assignedTickets    Maintenance[]    @relation("AssignedTechnician")
+  reportedTickets    Maintenance[]    @relation("ReportedBy")
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  refreshTokens      RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Machine {
+  id              String        @id @default(uuid())
+  machineCode     String        @unique
+  machineName     String
+  machineType     String?
+  lineNumber      String
+  department      String
+  status          MachineStatus @default(IDLE)
+  temperature     Float         @default(0)
+  rpm             Int           @default(0)
+  efficiency      Float         @default(0)
+  operatorId      String?
+  operator        User?         @relation("MachineOperator", fields: [operatorId], references: [id])
+  lastMaintenance DateTime?
+  nextMaintenance DateTime?
+  installedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  maintenanceTickets Maintenance[]
+  productionRecords  Production[]
+
+  @@map("machines")
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  workerId  String
+  worker    User             @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  date      DateTime         @default(now())
+  checkIn   DateTime?
+  checkOut  DateTime?
+  status    AttendanceStatus @default(PRESENT)
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  @@unique([workerId, date])
+  @@map("attendance")
+}
+
+model Maintenance {
+  id             String              @id @default(uuid())
+  machineId      String
+  machine        Machine             @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  technicianId   String?
+  technician     User?               @relation("AssignedTechnician", fields: [technicianId], references: [id])
+  reportedById   String?
+  reportedBy     User?               @relation("ReportedBy", fields: [reportedById], references: [id])
+  issue          String
+  description    String?
+  priority       MaintenancePriority @default(MEDIUM)
+  status         MaintenanceStatus   @default(OPEN)
+  repairDate     DateTime?
+  resolvedAt     DateTime?
+  downtimeMins   Int?                @default(0)
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@map("maintenance")
+}
+
+model Inventory {
+  id           String             @id @default(uuid())
+  itemName     String
+  itemCode     String             @unique
+  category     InventoryCategory
+  quantity     Int                @default(0)
+  minimumStock Int                @default(10)
+  unit         String             @default("pcs")
+  supplier     String?
+  unitPrice    Float?             @default(0)
+  location     String?
+  updatedAt    DateTime           @updatedAt
+  createdAt    DateTime           @default(now())
+
+  stockHistory StockHistory[]
+
+  @@map("inventory")
+}
+
+model StockHistory {
+  id          String    @id @default(uuid())
+  inventoryId String
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  changeType  String // "IN" | "OUT" | "ADJUSTMENT"
+  quantity    Int
+  reason      String?
+  createdAt   DateTime  @default(now())
+
+  @@map("stock_history")
+}
+
+model Production {
+  id             String   @id @default(uuid())
+  lineNumber     String
+  machineId      String
+  machine        Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  dailyOutput    Float    @default(0)
+  targetOutput   Float    @default(0)
+  efficiency     Float    @default(0)
+  defectCount    Int      @default(0)
+  productionDate DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@map("production")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRead    Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
