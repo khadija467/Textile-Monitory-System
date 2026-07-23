@@ -133,16 +133,7 @@ http://localhost:5000
 
 ---
 
-# 📸 Screenshots
 
-> Add screenshots of:
-- Login Page
-- Dashboard
-- Machine Management
-- Production Dashboard
-- Maintenance Module
-
----
 
 # 👩‍💻 Author
 
